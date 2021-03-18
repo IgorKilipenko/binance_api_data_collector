@@ -1,0 +1,50 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build docker",
+            "type": "shell",
+            "command": "docker run --detach -d --name fapicontainer -p 8081:8000 fastapiimage"
+        },
+        {
+            "label": "set venv (win)",
+            "type": "shell",
+            "command": ".\\env\\Scripts\\activate"
+        },
+        {
+            "label": "install requirements (windows)",
+            "type": "shell",
+            "command": "py -m pip install -r requirements.txt"
+        },
+        {
+            "type": "docker-build",
+            "label": "docker-build",
+            "platform": "python",
+            "dockerBuild": {
+                "tag": "fastapitest:latest",
+                "dockerfile": "${workspaceFolder}/Dockerfile",
+                "context": "${workspaceFolder}",
+                "pull": true
+            }
+        },
+        {
+            "type": "docker-run",
+            "label": "docker-run: debug",
+            "dependsOn": [
+                "docker-build"
+            ],
+            "python": {
+                "args": [
+                    "main:app",
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    "8000"
+                ],
+                "module": "uvicorn"
+            }
+        }
+    ]
+}
