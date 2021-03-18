@@ -1,16 +1,25 @@
-FROM python:3.9
+# For more information, please refer to https://aka.ms/vscode-docker-python
+FROM python:3.8-slim-buster
 
-EXPOSE 8080
+EXPOSE 8000
 
-WORKDIR /src
+# Keeps Python from generating .pyc files in the container
+ENV PYTHONDONTWRITEBYTECODE=1
 
-COPY requirements.txt requirements.txt
-#RUN py -m pip install -r requirements.txt
-RUN pip install -r requirements.txt
+# Turns off buffering for easier container logging
+ENV PYTHONUNBUFFERED=1
 
-COPY ./src /src
+# Install pip requirements
+COPY requirements.txt .
+RUN python -m pip install -r requirements.txt
 
-# update PATH environment variable
-#ENV PATH=/root/.local:$PATH
+WORKDIR /app
+COPY ./src /app
 
-CMD [ "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8085"]
+# Creates a non-root user and adds permission to access the /app folder
+# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
+RUN useradd appuser && chown -R appuser /app
+USER appuser
+
+# During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "-k", "uvicorn.workers.UvicornWorker", "main:app"]
