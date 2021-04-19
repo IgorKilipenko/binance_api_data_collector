@@ -28,8 +28,16 @@ todos = [
     }
 ]
 
-@app.get("/symbols", tags=["todos"])
+@app.get("/symbols")
 async def get_all_symbols() -> list[dict]:
+    #for i in range(3):
+    #    await binance_client.get_all_symbols()
+    res = await binance_client.get_all_symbols() #or []
+    _logger.debug(res)
+    return res
+
+@app.get("/kline")
+async def get_klines() -> list[list]:
     #for i in range(3):
     #    await binance_client.get_all_symbols()
     res = await binance_client.get_all_symbols() #or []
@@ -39,3 +47,12 @@ async def get_all_symbols() -> list[dict]:
 @app.get("/todo", tags=["todos"])
 async def get_todos() -> dict:
     return { "data": todos }
+
+@app.get("/testklines")
+async def get_todos() -> dict:
+    res = await binance_client.get_futures_continous_klines()
+    res = await binance_client.get_futures_continous_klines()
+    res = await binance_client.get_futures_continous_klines()
+    res = await binance_client.get_futures_continous_klines()
+    _logger.debug(res)
+    return res

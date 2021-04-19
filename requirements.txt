@@ -3,4 +3,5 @@ fastapi[all]==0.63.0
 uvicorn[standard]==0.13.4
 gunicorn==20.0.4
 pymongo==3.11.3
-python-binance==0.7.10
+#python-binance==0.7.10
+./libs/python-binance

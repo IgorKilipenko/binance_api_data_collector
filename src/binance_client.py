@@ -3,16 +3,19 @@ import typing
 from binance.client import Client
 from user_config import UserConfig
 from binance.websockets import BinanceSocketManager
+import binance.exceptions as bexceptions
 import asyncio
 import time
 from functools import wraps, partial, partialmethod
 import app_logger
 
-logger = app_logger.get_logger(__name__)
+_logger = app_logger.get_logger(__name__)
 
 class BinanceClient():
     __instance = None
-    __last_time_req = time.time()
+    #__last_time_req = time.time()
+    _req_cond = asyncio.Condition()
+    _req_delay = 5.0
     
     def __new__(cls):
         if not hasattr(cls, '__instance'):
@@ -25,6 +28,41 @@ class BinanceClient():
         else: 
             self.client = Client(api_key, api_secret)
         self.bm = None
+        
+    def _async_wrap(func):
+        @wraps(func)
+        async def run(*args, loop=None, executor=None, **kwargs):
+            async with BinanceClient._req_cond:
+                if loop is None:
+                    loop = asyncio.get_event_loop()
+                pfunc = partial(func, *args, **kwargs)
+                #pfunc = partialmethod(func, *args, **kwargs).func
+                res = await loop.run_in_executor(executor, pfunc)
+                _logger.debug(f"start await at {time.time()}")
+                await asyncio.sleep(BinanceClient._req_delay)
+                _logger.debug(f"end await at {time.time()}")
+                return res
+        return run 
+    
+    #def _binance_delay_request(req_function: typing.Callable, min_delay:typing.Optional[float] = 0.3) -> typing.Callable[..., typing.Coroutine[typing.Any, None, None]]:   
+    #    @wraps(req_function)
+    #    async def wrapper(*args,**kwargs):
+    #        state = type('', (), {})()
+    #        state.curr_time = time.time()
+    #        state.global_time = max(BinanceClient.__last_time_req, state.curr_time) + min_delay
+    #        state.delay = max(min_delay - (state.curr_time - state.global_time), 0)
+    #    
+    #        BinanceClient.__last_time_req = max(BinanceClient.__last_time_req, state.curr_time) + min_delay
+    #        print(f"start await at {state.curr_time}")
+    #        await asyncio.sleep(state.delay)
+    #        BinanceClient.__last_time_req = max(BinanceClient.__last_time_req, time.time())
+    #        print(f"stop await at {BinanceClient.__last_time_req}")
+    #        
+    #        pfunc = partialmethod(req_function, *args, **kwargs).func
+    #        return await pfunc(*args, **kwargs)
+    #    
+    #    return wrapper
+    
         
     def open_websocket(self):
         if self.bm is None:
@@ -55,25 +93,7 @@ class BinanceClient():
         print("stream: {} data: {}".format(msg['stream'], msg['data']))
     
    
-    def _binance_delay_request(req_function: typing.Callable, min_delay:typing.Optional[float] = 0.3) -> typing.Callable[..., typing.Coroutine[typing.Any, None, None]]:   
-        @wraps(req_function)
-        async def wrapper(*args,**kwargs):
-            _a = args
-            state = type('', (), {})()
-            state.curr_time = time.time()
-            state.global_time = max(BinanceClient.__last_time_req, state.curr_time) + min_delay
-            state.delay = max(min_delay - (state.curr_time - state.global_time), 0)
-        
-            BinanceClient.__last_time_req = max(BinanceClient.__last_time_req, state.curr_time) + min_delay
-            print(f"start await at {state.curr_time}")
-            await asyncio.sleep(state.delay)
-            BinanceClient.__last_time_req = max(BinanceClient.__last_time_req, time.time())
-            print(f"stop await at {BinanceClient.__last_time_req}")
-            
-            pfunc = partialmethod(req_function, *args, **kwargs).func
-            return await pfunc(*args, **kwargs)
-        
-        return wrapper
+
     
     async def get_all_symbols(self) -> typing.Coroutine[typing.Union[list[dict], None], None, None]:
         info = await  self.get_stock_exchange_info()
@@ -81,16 +101,18 @@ class BinanceClient():
             return info['symbols']
         else: return None
         
-    @_binance_delay_request
+    #@_binance_delay_request
     async def get_stock_exchange_info(self) -> typing.Coroutine[typing.Union[dict, None], None, None]:
         info = await BinanceClient._async_wrap(self.client.get_exchange_info)()
         return info
     
-    def _async_wrap(func):
-        @wraps(func)
-        async def run(*args, loop=None, executor=None, **kwargs):
-            if loop is None:
-                loop = asyncio.get_event_loop()
-            pfunc = partial(func, *args, **kwargs)
-            return await loop.run_in_executor(executor, pfunc)
-        return run 
+
+    #@_binance_delay_request
+    async  def get_klines0(self, symbol, interval, start_str, end_str=None, limit=500):
+        await  BinanceClient._async_wrap(self.client.get_historical_klines)(symbol, interval, start_str, end_str, limit)
+    
+    #@_binance_delay_request 
+    async def get_futures_continous_klines(self, type:str='Stock') -> list[list]:
+        return await BinanceClient._async_wrap(self.client.futures_continous_klines)(pair='BNBUSDT', interval=Client.KLINE_INTERVAL_1HOUR, contractType='PERPETUAL', startTime=0, endTime=None, limit=1)
+    
+    
