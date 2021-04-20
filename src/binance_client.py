@@ -14,7 +14,10 @@ _logger = app_logger.get_logger(__name__)
 class BinanceClient():
     __instance = None
     _req_cond = asyncio.Condition()
-    _req_delay = 5.0
+    _req_delay = 0.3
+    __req_state = type('__req_state', (), {
+        'req_count': 0
+    })
     
     def __new__(cls):
         if not hasattr(cls, '__instance'):
@@ -31,16 +34,18 @@ class BinanceClient():
     def _async_wrap(func):
         @wraps(func)
         async def run(*args, loop=None, executor=None, **kwargs):
-            async with BinanceClient._req_cond:
-                if loop is None:
-                    loop = asyncio.get_event_loop()
-                pfunc = partial(func, *args, **kwargs)
-                #pfunc = partialmethod(func, *args, **kwargs).func
-                res = await loop.run_in_executor(executor, pfunc)
-                _logger.debug(f"start await at {time.time()}")
-                await asyncio.sleep(BinanceClient._req_delay)
-                _logger.debug(f"end await at {time.time()}")
-                return res
+            if loop is None:
+                loop = asyncio.get_event_loop()
+            pfunc = partial(func, *args, **kwargs)
+            #pfunc = partialmethod(func, *args, **kwargs).func
+            
+            #if BinanceClient.__req_state.req_count >= 5:
+            #    _logger.debug(f"start await at {time.time()}, request count = {BinanceClient.__req_state.req_count}")
+            #    await asyncio.sleep(BinanceClient._req_delay)
+            #    _logger.debug(f"end await at {time.time()}")
+                
+            res = await loop.run_in_executor(executor, pfunc)
+            return res
         return run 
     
         
@@ -78,15 +83,53 @@ class BinanceClient():
         if info is not None:
             return info['symbols']
         else: return None
+    
+    async def get_all_futures_symbols(self) -> typing.Coroutine[typing.Union[list[dict], None], None, None]:
+        info = await  self.get_stock_exchange_info()
+        if info is not None:
+            return info['symbols']
+        else: return None
         
     async def get_stock_exchange_info(self) -> typing.Coroutine[typing.Union[dict, None], None, None]:
         info = await BinanceClient._async_wrap(self.client.get_exchange_info)()
         return info
     
+    async def get_futures_exchange_info(self) -> typing.Coroutine[typing.Union[dict, None], None, None]:
+        info = await BinanceClient._async_wrap(self.client.futures_exchange_info)()
+        return info
+    
     async  def get_klines0(self, symbol, interval, start_str, end_str=None, limit=500):
         await  BinanceClient._async_wrap(self.client.get_historical_klines)(symbol, interval, start_str, end_str, limit)
     
-    async def get_futures_continous_klines(self, type:str='Stock') -> list[list]:
-        return await BinanceClient._async_wrap(self.client.futures_continous_klines)(pair='BNBUSDT', interval=Client.KLINE_INTERVAL_1HOUR, contractType='PERPETUAL', startTime=0, endTime=None, limit=1)
-    
-    
+    async def get_futures_continous_klines(self, pair:typing.Union[list, str]='BNBUSDT', interval=Client.KLINE_INTERVAL_1HOUR, contractType='PERPETUAL', startTime=0, endTime=None, limit=1) -> typing.Coroutine[list[list], None, None]:
+        res = []
+        if not pair:
+            return res
+        
+        assert(isinstance(pair, str) or isinstance(pair, list))
+        
+        pair = [pair] if isinstance(pair, str) else pair
+        #if pair and isinstance(pair, str):
+        #    return await BinanceClient._async_wrap(self.client.futures_continous_klines)(pair=pair, interval=interval, contractType=contractType, startTime=startTime, endTime=endTime, limit=limit)
+        #    pairs 
+
+        tasks = []
+        
+        async def tryLoad(pair:str) -> typing.Coroutine[list[list], None, None]:
+            res = []
+            try:
+                res = await BinanceClient._async_wrap(self.client.futures_continous_klines)(pair=pair, interval=interval, contractType=contractType, startTime=startTime, endTime=endTime, limit=limit)
+            except bexceptions.BinanceAPIException as err:
+                _logger.warn(err)
+            return res
+        
+        for i in range(0, len(pair)):
+            tasks.append(tryLoad(pair[i]))
+            if i % 5 == 0:
+                buffer = await asyncio.gather(
+                    *tasks
+                )
+                res += [b for b in buffer if b]
+                tasks.clear()
+        
+        return res
