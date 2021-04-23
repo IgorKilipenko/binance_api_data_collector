@@ -1,4 +1,5 @@
 from functools import cache
+from logging import log
 from fastapi import FastAPI, WebSocket
 from datetime import datetime
 from typing import List, Optional
@@ -7,14 +8,28 @@ from binance_client import BinanceClient
 import binance.exceptions as bex
 import app_logger
 import re as re
+import db as datebase
 
 _logger = app_logger.get_logger(__name__)
-_logger.debug('test')
-_logger.debug('test')
+#_logger.debug('test')
+#_logger.debug('test')
+
 app = FastAPI()
 
 binance_client = BinanceClient()
 #binance_client.open_websocket()
+db = datebase.Db()
+
+@app.on_event("startup")
+async def startup_event():
+    _logger.info('Server started')
+    
+    stock_info = await binance_client.get_stock_exchange_info()
+    db.insert_stock_exchange_info(stock_info)
+    
+@app.on_event("shutdown")
+def shutdown_event():
+    _logger.info('Stoped started')
 
 @app.get("/")
 async def root():
