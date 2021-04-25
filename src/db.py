@@ -1,5 +1,7 @@
-from pymongo import MongoClient
+#from pymongo import MongoClient
+import motor.motor_asyncio
 import app_logger
+import typing
 
 _logger = app_logger.get_logger(__name__)
 
@@ -22,29 +24,48 @@ class Db():
         return cls.__instance
     
     def __init__(self, host='localhost', port=27017, db_name = 'binance-web-cache'):
-        self._client = MongoClient(host, port)
-        self.db = self._client[db_name]
-        self.db_name = db_name
+        self._client :motor.motor_asyncio.core.AgnosticClient = motor.motor_asyncio.AsyncIOMotorClient(host = host, port = port)
+        self.db : motor.motor_asyncio.core.AgnosticDatabase = self._client[db_name]
+        self.db_name : str = db_name
         
+        self._collection_names = self.db.list_collection_names()
         self._init_collections()
 
         
     def _init_collections(self):
-        self.trades_collection = self.db[DbCollections.trades_collection]
-        self.stock_exchange_info_collection = self.db[DbCollections.stock_exchange_info_collection]
-        self.futures_exchange_info_collection = self.db[DbCollections.futures_exchange_info_collection]
+        assert(self.db)
+        collection_names = self.db.list_collection_names()
         
-
-    def insert_stock_exchange_info(self, data:dict, drop_collection=False):
+        
+        self.trades_collection : motor.motor_asyncio.core.AgnosticCollection = self.db.get_collection(DbCollections.trades_collection)
+        self.stock_exchange_info_collection : motor.motor_asyncio.core.AgnosticCollection = self.db.get_collection(DbCollections.stock_exchange_info_collection)
+        self.futures_exchange_info_collection : motor.motor_asyncio.core.AgnosticCollection = self.db.get_collection(DbCollections.futures_exchange_info_collection)
+        
+    def _create_collection(self, name:str, collection_names : typing.Optional[list[str]] = None) -> motor.motor_asyncio.core.AgnosticCollection:
+        assert(self.db)
+        collection_names :list[str] = collection_names or self.db.list_collection_names()
+        if name not in collection_names:
+            return self[name]   
+    
+    def get_collection(self, name) -> typing.Union[motor.motor_asyncio.core.AgnosticCollection, None]:
+        assert(self.db)
+        if name in self._collection_names:
+            return self.db[name]
+        else: return None
+    
+    @property
+    def collection_names(self) -> list[str]:
+        return self._collection_names
+    
+    async def insert_stock_exchange_info(self, data:dict, drop_collection=False):
         if drop_collection:
             self.stock_exchange_info_collection.drop()
-        res = self.stock_exchange_info_collection.insert_one(data)
+        res = await self.stock_exchange_info_collection.insert_one(data)
         _logger.debug(f'Insert stock_exchange_info, id = {res.inserted_id}')
     
-    def insert_futures_exchange_info(self, data:dict, drop_collection=False):
+    async def insert_futures_exchange_info(self, data:dict, drop_collection=False):
         if drop_collection:
             self.stock_exchange_info_collection.drop()
-        res = self.stock_exchange_info_collection.insert_one(data)
+        res = await self.stock_exchange_info_collection.insert_one(data)
         _logger.debug(f'Insert stock_exchange_info, id = {res.inserted_id}')
-        
     

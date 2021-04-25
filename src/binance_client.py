@@ -1,13 +1,13 @@
-from datetime import datetime
 import typing
 from binance.client import Client
 from user_config import UserConfig
 from binance.websockets import BinanceSocketManager
 import binance.exceptions as bexceptions
+import binance.helpers as helpers
 import asyncio
-import time
 from functools import wraps, partial, partialmethod
 import app_logger
+import datetime as dt
 
 _logger = app_logger.get_logger(__name__)
 
@@ -85,7 +85,7 @@ class BinanceClient():
         else: return None
     
     async def get_all_futures_symbols(self) -> typing.Coroutine[typing.Union[list[dict], None], None, None]:
-        info = await  self.get_stock_exchange_info()
+        info = await  self.get_futures_exchange_info()
         if info is not None:
             return info['symbols']
         else: return None
@@ -101,12 +101,15 @@ class BinanceClient():
     async  def get_klines0(self, symbol, interval, start_str, end_str=None, limit=500):
         await  BinanceClient._async_wrap(self.client.get_historical_klines)(symbol, interval, start_str, end_str, limit)
     
-    async def get_futures_continous_klines(self, pair:typing.Union[list, str]='BNBUSDT', interval=Client.KLINE_INTERVAL_1HOUR, contractType='PERPETUAL', startTime=0, endTime=None, limit=1) -> typing.Coroutine[list[list], None, None]:
+    async def get_futures_continous_klines(self, pair:typing.Union[list, str]='BNBUSDT', interval:str=Client.KLINE_INTERVAL_1HOUR, contractType='PERPETUAL', startTime=0, endTime=None, limit=None) -> typing.Coroutine[list[list], None, None]:
         res = []
         if not pair:
             return res
         
         assert(isinstance(pair, str) or isinstance(pair, list))
+        
+        interval_ms = helpers.interval_to_milliseconds(interval)
+        assert(interval_ms)
         
         pair = [pair] if isinstance(pair, str) else pair
         #if pair and isinstance(pair, str):
@@ -133,3 +136,11 @@ class BinanceClient():
                 tasks.clear()
         
         return res
+
+    
+    def calc_max_limit(start_time:typing.Union[str,int,dt.datetime], end_time, interval:str = Client.KLINE_INTERVAL_1DAY):
+        interval_ms = helpers.interval_to_milliseconds(interval)
+        assert(interval_ms)
+        
+        if isinstance(start_time, str):
+            helpers.date_to_milliseconds()
